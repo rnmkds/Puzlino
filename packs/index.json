@@ -1,7 +1,3 @@
-
 [
-  { "id": "architektur", "name": "Architektur" },
-  { "id": "abstrakt",    "name": "Abstrakt" },
-  { "id": "natur",       "name": "Natur" },
-  { "id": "tiere",       "name": "Tiere" }
+  { "id": "architektur", "name": "Architektur" }
 ]
