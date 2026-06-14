@@ -56,6 +56,7 @@
   body.scr-mine #page-mine{display:flex}
   body.scr-discover #page-discover{display:flex}
   body.scr-settings #page-settings{display:flex}
+  body.scr-pack #page-pack{display:flex}
   body.scr-game .bottomnav, body.scr-splash .bottomnav{display:none}
 
   .pgscroll{flex:1 1 auto; overflow:auto; -webkit-overflow-scrolling:touch}
@@ -141,6 +142,10 @@
   .achn{font-weight:800; font-size:13.5px}
   .achd{color:var(--muted); font-size:11.5px; font-weight:600; margin-top:1px; line-height:1.3}
 
+  img.packcover{width:100%; aspect-ratio:16/9; object-fit:cover; display:block}
+  .packgrid{display:grid; grid-template-columns:1fr 1fr; gap:11px}
+  .packcell{padding:0; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--panel); cursor:pointer; box-shadow:var(--shadow-card)}
+  .packcell img{width:100%; aspect-ratio:4/3; object-fit:cover; display:block}
   .streak{display:flex; align-items:center; gap:8px; background:var(--accent); color:#172033;
     border-radius:13px; padding:8px 13px; font-weight:800; font-size:14px; margin-bottom:14px; width:max-content}
 
@@ -461,6 +466,20 @@
     </div>
   </div>
 
+  <!-- ================= PACK-DETAIL ================= -->
+  <div class="navpage" id="page-pack">
+    <div class="pgscroll">
+      <div class="pghead">
+        <button class="btn" id="packBack" title="Zurück" aria-label="Zurück"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <div class="pgtitle" id="packTitle" style="font-size:22px">Sammlung</div>
+        <span style="width:38px"></span>
+      </div>
+      <div class="pgbody">
+        <div class="packgrid" id="packGrid"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= EINSTELLUNGEN ================= -->
   <div class="navpage" id="page-settings">
     <div class="pgscroll">
@@ -684,7 +703,7 @@ const ASSETS=window.PUZ_ASSETS||{};
   });
 
   /* ================= Screens & Navigation ================= */
-  const SCREENS=["splash","home","mine","discover","settings","game"];
+  const SCREENS=["splash","home","mine","discover","pack","settings","game"];
   function setScreen(s){
     document.body.classList.remove(...SCREENS.map(x=>"scr-"+x));
     document.body.classList.add("scr-"+s);
@@ -698,6 +717,7 @@ const ASSETS=window.PUZ_ASSETS||{};
     if(tab==="home") refreshResume();
   }
   function goHome(){ navTo("home"); }
+  if($("packBack")) $("packBack").addEventListener("click",()=>navTo("discover"));
   let lastRec=null;
   async function refreshResume(){
     let id=null; try{ id=localStorage.getItem("puzlino.last"); }catch(_){}
@@ -2404,12 +2424,39 @@ const ASSETS=window.PUZ_ASSETS||{};
     x.fillStyle=g[0]; for(const [ox,oy,r] of [[0,-150,70],[-46,-110,52],[46,-110,52],[0,-110,60]]){ x.beginPath(); x.arc(tx+ox,ty+oy,r,0,7); x.fill(); }
   }
 
-  const PACKS=[
-    {n:"Architektur",q:["#dfe3ea","#c7d0e0"]},
-    {n:"Natur",q:["#d8ecd8","#b9dcc0"]},
-    {n:"Städte",q:["#e6e0ee","#cfc4e0"]},
-    {n:"Kunst",q:["#f1e3d6","#e3cbb4"]}
-  ];
+  /* ================= Bild-Packs (aus dem Ordner packs/) ================= */
+  // Struktur im Repo:
+  //   packs/index.json   ->  [ {"id":"natur","name":"Natur"}, ... ]
+  //   packs/natur/1.jpg, 2.jpg, 3.jpg ...   (einfach durchnummeriert)
+  // Vorschaubild jeder Kategorie = 1.jpg. Die App zählt die Bilder automatisch hoch.
+  const PACK_EXT=["jpg","jpeg","png","webp"];
+  let packsIndex=null;            // geladene Kategorien-Liste
+  const packCount={};             // gemerkte Bildanzahl je Pack
+  function packBase(){ return new URL("packs/", location.href).href; }
+  function packImgUrl(id,n,ext){ return `${packBase()}${id}/${n}.${ext}`; }
+  function probeImg(url){
+    return new Promise((res)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src=url; });
+  }
+  // Findet die Datei-Endung des ersten Bildes (manche speichern .jpg, andere .png)
+  async function firstImage(id){
+    for(const ext of PACK_EXT){ const im=await probeImg(packImgUrl(id,1,ext)); if(im) return {im,ext}; }
+    return null;
+  }
+  async function loadPacksIndex(){
+    if(packsIndex) return packsIndex;
+    try{
+      const r=await fetch(packBase()+"index.json",{cache:"no-cache"});
+      if(r.ok){ const j=await r.json(); if(Array.isArray(j)) packsIndex=j; }
+    }catch(_){}
+    if(!packsIndex) packsIndex=[];
+    return packsIndex;
+  }
+  async function countPackImages(id,ext){
+    if(packCount[id]) return packCount[id];
+    let n=0;
+    while(n<200){ const im=await probeImg(packImgUrl(id,n+1,ext)); if(!im) break; n++; }
+    packCount[id]=n; return n;
+  }
 
   // --- Statistik ---
   function getStats(){ try{ return JSON.parse(localStorage.getItem("puzlino.stats")||"{}"); }catch(_){ return {}; } }
@@ -2448,13 +2495,55 @@ const ASSETS=window.PUZ_ASSETS||{};
     renderCalendar();
     renderStats();
     renderAchievements();
-    const pl=$("packList"); pl.innerHTML="";
-    for(const p of PACKS){
-      const c=document.createElement("div"); c.className="dpcard";
-      c.innerHTML=`<div style="aspect-ratio:16/9;background:linear-gradient(135deg,${p.q[0]},${p.q[1]})"></div>
-        <div class="cap"><b>${p.n}</b><span>Bald</span></div>`;
-      pl.appendChild(c);
+    renderPacks();
+  }
+  async function renderPacks(){
+    const pl=$("packList"); if(!pl) return;
+    const list=await loadPacksIndex();
+    pl.innerHTML="";
+    if(!list.length){
+      pl.innerHTML=`<div style="color:var(--muted);font-size:13px;font-weight:600;padding:6px 2px">
+        Noch keine Sammlungen. Lege im Ordner <b>packs/</b> Kategorien an (z. B. packs/natur/1.jpg …).</div>`;
+      return;
     }
+    for(const p of list){
+      const c=document.createElement("div"); c.className="dpcard";
+      c.innerHTML=`<div class="packcover" style="aspect-ratio:16/9;background:var(--primary-soft)"></div>
+        <div class="cap"><b>${p.name||p.id}</b><span class="packcnt">…</span></div>`;
+      pl.appendChild(c);
+      // Vorschaubild = erstes Bild; zählt nebenbei die Bilder
+      firstImage(p.id).then(async(first)=>{
+        const cover=c.querySelector(".packcover"), cnt=c.querySelector(".packcnt");
+        if(!first){ cnt.textContent="leer"; return; }
+        cover.style.background=`#0000`; const img=document.createElement("img");
+        img.src=first.im.src; cover.replaceWith(img); img.className="packcover";
+        const n=await countPackImages(p.id,first.ext);
+        cnt.textContent=`${n} ${n===1?"Bild":"Bilder"}`;
+        c.addEventListener("click",()=>openPack(p,first.ext,n));
+      });
+    }
+  }
+
+  /* ---- Pack-Detailansicht: alle Bilder als Raster, Tippen startet das Puzzle ---- */
+  function openPack(p,ext,n){
+    A.ensure();
+    $("packTitle").textContent=p.name||p.id;
+    const grid=$("packGrid"); grid.innerHTML="";
+    for(let i=1;i<=n;i++){
+      const cell=document.createElement("button"); cell.className="packcell";
+      const img=document.createElement("img"); img.loading="lazy"; img.src=packImgUrl(p.id,i,ext);
+      cell.appendChild(img);
+      cell.addEventListener("click",()=>{ startPackImage(p.id,i,ext); });
+      grid.appendChild(cell);
+    }
+    setScreen("pack");
+  }
+  function startPackImage(id,i,ext){
+    A.ensure(); Music.ensure();
+    const img=new Image();
+    img.onload=()=>{ setScreen("game"); requestAnimationFrame(()=>loadImage(img)); };
+    img.onerror=()=>showToast("Bild konnte nicht geladen werden");
+    img.src=packImgUrl(id,i,ext);
   }
   function renderCalendar(){
     const el=$("calGrid"); if(!el) return;

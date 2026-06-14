@@ -1,5 +1,5 @@
-/* Puzlino service worker — App-Shell offline, Fonts laufzeit-gecacht */
-const CACHE = "puzlino-v12";
+/* Puzlino service worker — App-Shell offline, Packs laufzeit-gecacht */
+const CACHE = "puzlino-v13";
 const SHELL = [
   "./",
   "./index.html",
@@ -28,6 +28,7 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
+  // Schriftarten: laufzeit-gecacht
   if (url.host.includes("fonts.googleapis.com") || url.host.includes("fonts.gstatic.com")) {
     e.respondWith(
       caches.open(CACHE).then((c) =>
@@ -40,11 +41,29 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
+  // Bild-Packs (packs/...): NETWORK-FIRST, damit neue Bilder/Kategorien erscheinen;
+  // offline aus dem Cache. Fehlende Bilder geben einen echten Fehler zurück (kein index.html-Fallback).
+  if (url.pathname.includes("/packs/")) {
+    e.respondWith(
+      fetch(req).then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
+        return res;                                  // auch 404 unverändert zurückgeben
+      }).catch(() => caches.match(req))              // offline: aus Cache, sonst undefined (=> Fehler)
+    );
+    return;
+  }
+
+  // App-Shell & Rest: cache-first, Navigations-Fallback auf index.html
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+      }
       return res;
-    }).catch(() => caches.match("./index.html")))
+    }).catch(() => (req.mode === "navigate" ? caches.match("./index.html") : undefined)))
   );
 });
