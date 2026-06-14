@@ -1,6 +1,6 @@
 [
-  { "id": "architektur", "name": "Architektur" }
+  { "id": "architektur", "name": "Architektur" },
+  { "id": "landschaften", "name": "Landschaften" },
+  { "id": "tiere", "name": "Tiere" },
   { "id": "abstrakt", "name": "Abstrakt" }
-  { "id": "landschaften", "name": "Landschaften" }
-  { "id": "tiere", "name": "Tiere" }
 ]
